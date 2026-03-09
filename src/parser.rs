@@ -14,8 +14,8 @@ pub fn parse_page(base: &Url, depth: u8, html: &str) -> ParseResult {
     let title = document
         .select(&title_sel)
         .next()
-        .and_then(|t| Some(t.text.collect::<String>().trim().to_string()))
-        .filter(|s| !s.is_empty());
+        .and_then(|t| Some(t.text().collect::<String>().trim().to_string()))
+        .filter(|s: &String| !s.is_empty());
 
     let link_sel = Selector::parse("a[href]").unwrap();
 

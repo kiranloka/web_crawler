@@ -1,7 +1,4 @@
 use dashmap::DashSet;
-use futures::stream::{FuturesUnordered, StreamExt};
-use std::collection::VecDeque;
-use tokio::sync::mpsc;
 use url::Url;
 
 #[derive(Debug, Clone)]
@@ -12,7 +9,7 @@ pub struct CrawlTask {
 
 #[derive(Clone)]
 pub struct Frontier {
-    visited: Dashset,
+    visited: DashSet<String>,
     max_depth: u8,
 }
 

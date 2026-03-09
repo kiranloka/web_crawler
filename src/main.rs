@@ -1,3 +1,101 @@
-fn main() {
-    println!("Hello, world!");
+mod fetcher;
+mod frontier;
+mod parser;
+mod scheduler;
+mod storage;
+
+use tokio::sync::mpsc;
+use tokio::task;
+use url::Url;
+
+use crate::{
+    fetcher::Fetcher, frontier::Frontier, parser::parse_page, scheduler::Scheduler,
+    storage::store_page,
+};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let max_depth = 2;
+    let concurrency: usize = 8;
+    let delay_ms = 100;
+
+    let frontier = Frontier::new(max_depth);
+    let (tx, rx) = mpsc::channel(1024);
+    let scheduler = Scheduler::new(frontier.clone(), tx.clone());
+    let fetcher = Fetcher::new(delay_ms);
+
+    println!(
+        r#"
+ ____  _____    _    ____   ____ ____      _ __        __ _     _____ ____  
+|  _ \| ____|  / \  |  _ \ / ___|  _ \    / \\ \      / /| |   | ____|  _ \ 
+| | | |  _|   / _ \ | | | | |   | |_) |  / _ \\ \ /\ / / | |   |  _| | |_) |
+| |_| | |___ / ___ \| |_| | |___|  _ <  / ___ \\ V  V /  | |___| |___|  _ < 
+|____/|_____/_/   \_\____/ \____|_| \_\/_/   \_\_/\_/   |_____|_____|_| \_\
+"#
+    );
+
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() < 2 {
+        eprintln!("Usage: {} <URL>", args[0]);
+        return Ok(());
+    }
+    let start_url = Url::parse(&args[1])?;
+
+    let seeds = vec![start_url];
+    for task in frontier.seed(seeds) {
+        scheduler.submit(task).await;
+    }
+
+    let rx = Arc::new(Mutex::new(rx));
+    let mut workers = Vec::new();
+    for _ in 0..concurrency {
+        let rx = Arc::clone(&rx);
+        let scheduler = scheduler.clone();
+        let fetcher = fetcher.clone();
+        let handle = task::spawn(async move {
+            loop {
+                let task = {
+                    let mut rx_lock = rx.lock().await;
+                    rx_lock.recv().await
+                };
+
+                let task = match task {
+                    Some(t) => t,
+                    None => break,
+                };
+
+                println!("Crawling: {}", task.url);
+
+                let body = match fetcher.fetch(&task).await {
+                    Ok(b) => b,
+                    Err(e) => {
+                        eprintln!("Failed to fetch {}: {}", task.url, e);
+                        continue;
+                    }
+                };
+
+                let parsed = parse_page(&task.url, task.depth, &body);
+                if let Some(title) = &parsed.title {
+                    println!("Title: {}", title);
+                }
+
+                store_page(&task, &parsed.title).await;
+
+                for new_task in parsed.new_links {
+                    scheduler.submit(new_task).await;
+                }
+            }
+        });
+
+        workers.push(handle);
+    }
+
+    drop(tx);
+    for w in workers {
+        let _ = w.await;
+    }
+
+    Ok(())
 }

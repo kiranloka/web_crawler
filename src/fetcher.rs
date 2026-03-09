@@ -19,10 +19,10 @@ impl Fetcher {
         Self { client, delay_ms }
     }
 
-    pub async fn fetch(&self, task: CrawlTask) -> Result<String> {
+    pub async fn fetch(&self, task: &CrawlTask) -> Result<String> {
         sleep(Duration::from_millis(self.delay_ms)).await;
 
-        let resp = self.client.get(task_url.as_str()).send().await?;
+        let resp = self.client.get(task.url.as_str()).send().await?;
         let body = resp.text().await?;
         Ok(body)
     }
