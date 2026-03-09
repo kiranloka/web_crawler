@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 use url::Url;
 
 #[derive(Debug, Clone)]
-pub struct CrawlTalk {
+pub struct CrawlTask {
     pub url: Url,
     pub depth: u8,
 }
@@ -24,14 +24,14 @@ impl Frontier {
         }
     }
 
-    pub fn seed(&self, seeds: Vec<Url>) -> Vec<CrawlTalk> {
+    pub fn seed(&self, seeds: Vec<Url>) -> Vec<CrawlTask> {
         seeds
             .into_iter()
-            .map(|url| CrawlTalk { url, depth: 0 })
+            .map(|url| CrawlTask { url, depth: 0 })
             .collect()
     }
 
-    pub fn should_enqueue(&self, task: &CrawlTalk) -> bool {
+    pub fn should_enqueue(&self, task: &CrawlTask) -> bool {
         if task.depth > self.max_depth {
             return false;
         }
